@@ -10,7 +10,7 @@
 
 ### SD-1: System Start-up and Initialization
 
-```
+```mermaid
 sequenceDiagram
     participant Power
     participant Boot
@@ -37,7 +37,7 @@ sequenceDiagram
 
 ### SD-2: Normal Voting (Sunny Day)
 
-```
+```mermaid
 sequenceDiagram
     actor Voter
     participant Ballot as Ballot_Unit_UART
@@ -58,7 +58,7 @@ sequenceDiagram
 
 ### SD-3: Safety-Critical – Tamper Detection
 
-```
+```mermaid
 sequenceDiagram
     participant Tamper as Tamper_Sensor_UART
     participant Controller
@@ -75,7 +75,7 @@ sequenceDiagram
 
 ### SD-4: Recovery After Power Loss / Reset
 
-```
+```mermaid
 sequenceDiagram
     participant Power
     participant Controller
