@@ -625,3 +625,327 @@ typedef struct {
 | T-ST-5 | NVM full condition | Storage exhausted | New votes rejected, error signaled |
 
 ---
+
+## Module: Tamper Manager
+
+### Purpose and Responsibilities
+
+Monitor tamper-detection hardware signals; escalate security violations; force transition to locked state irreversibly.
+
+### Inputs
+
+- **Tamper signals:** From hardware sensors (case open, voltage anomaly, memory write, etc.)
+- **Signal edges:** Rising/falling edge triggers
+
+### Outputs
+
+- **Escalation:** Force call to `Supervisor.request_transition(TamperDetected)`
+- **Tamper log:** Record of all tamper events with timestamp
+
+### Internal State
+
+```c
+typedef struct {
+    uint32_t active_tamper_flags;
+    uint32_t tamper_count;
+    uint32_t first_tamper_time;
+    uint32_t last_tamper_time;
+} TamperManagerState;
+```
+
+- **ActiveTamper:** Bitmask of currently active tamper signals
+- **TamperHistory:** Count and timestamps of tamper events
+
+### Initialization / Deinitialization
+
+- **Init:** Clear flags, reset counters, enable tamper ISR
+- **Reset:** Preserve tamper history (non-volatile if possible)
+- **Shutdown:** Disable tamper ISR if graceful shutdown
+
+### Basic Protection Rules
+
+- **Immediate escalation:** Any tamper → immediately call `Supervisor.request_transition(TamperDetected)`
+- **Irreversible lockdown:** Once `TamperDetected`, only factory reset can clear
+- **Debounce:** Optional: debounce short noise spikes (e.g., 10 ms hold)
+- **History preservation:** Tamper events logged even if cleared (non-volatile)
+- **Self-test on boot:** Verify tamper hardware is responsive (if applicable)
+
+### Module-Level Tests
+
+| Test ID | Purpose | Stimulus | Expected Outcome |
+|---------|---------|----------|------------------|
+| T-TM-1 | Case open detection | Case open signal asserted | Immediate escalation to TamperDetected |
+| T-TM-2 | Voltage anomaly | VCC anomaly detected | Escalation and transition |
+| T-TM-3 | Locked state irreversibility | Attempt to clear TamperDetected | Rejected (only factory reset allowed) |
+| T-TM-4 | Tamper history | Boot after tamper event | Tamper event recorded in non-volatile log |
+| T-TM-5 | Self-test | Boot sequence | Tamper hardware confirmed functional |
+
+---
+
+## Module: Logger (Audit Trail)
+
+### Purpose and Responsibilities
+
+Record all significant system events in an immutable audit log; support forensic analysis and compliance verification.
+
+### Inputs
+
+- **Log events:** From all modules (one-way, no control flow)
+- **Event type:** Category (state change, vote accepted, error, security)
+- **Data:** Event-specific payload (timestamps, IDs, etc.)
+
+### Outputs
+
+- **Audit trail:** Immutable record in NVM or circular buffer
+- **Flush signals:** On demand or periodic
+
+### Internal State
+
+```c
+typedef struct {
+    uint8_t log_buffer[LOG_BUFFER_SIZE];
+    uint32_t write_pointer;
+    uint32_t log_count;
+} LoggerState;
+```
+
+- **LogBuffer:** Circular buffer or fixed NVM region
+- **LogPointer:** Current write position
+- **RingSize:** Total capacity
+
+### Initialization / Deinitialization
+
+- **Init:** Clear or recover circular buffer, reset pointer
+- **Shutdown:** Flush any pending data
+
+### Basic Protection Rules
+
+- **Write-only:** Logger never influences any control decision
+- **No circular dependencies:** Logger calls no other module functions
+- **Circular buffer or append:** Never overwrite audit trail; oldest entries may roll over if buffer limited
+- **Timestamp every event:** Include RTC timestamp
+- **Event ordering:** Maintain causality (no out-of-order replay)
+
+### Module-Level Tests
+
+| Test ID | Purpose | Stimulus | Expected Outcome |
+|---------|---------|----------|------------------|
+| T-LG-1 | Log state transition | State change event | Event recorded with timestamp |
+| T-LG-2 | Log vote acceptance | Vote processed | Vote data logged (candidate, timestamp, vote ID) |
+| T-LG-3 | Log security event | Tamper detected | Security event logged immediately |
+| T-LG-4 | Buffer overflow handling | Log buffer full | Oldest entries rolled over (circular) or new writes rejected |
+| T-LG-5 | Recover audit trail | Boot after loss | Previous log entries readable (if persisted) |
+
+---
+
+## Step 9 – Updated Hierarchy Diagram (Finalized)
+
+*(Each member to update their own modules; sample finalized diagram below)*
+
+```mermaid
+flowchart TD
+
+System["SYSTEM [Gagan]
+Responsibility:
+- Overall lifecycle coordination
+- Initialize and manage subsystems
+- Detect and handle reset events
+
+Encapsulates:
+- BootState
+- ResetCause: {COLD, POWER_LOSS, WDT, SW}
+- InitSequence
+
+Interface:
+- system_init()
+- system_reset()
+- get_reset_cause() -> ResetCause
+"]
+
+System --> Supervisor["SUPERVISOR [Gagan]
+Responsibility:
+- Own and enforce election state
+- Validate state transitions
+- Coordinate functional modules
+
+Encapsulates:
+- CurrentState: {INIT, PRE_ELECT, VOTING, CLOSED, TAMPER, ERROR}
+- TransitionTable[6][5]
+- History
+
+Interface:
+- request_transition(event) -> bool
+- get_state() -> State
+- is_valid_transition(from, to) -> bool
+"]
+
+System --> Tamper["TAMPER MANAGER [Saunak]
+Responsibility:
+- Monitor tamper signals
+- Escalate security violations
+- Force locked state
+
+Encapsulates:
+- ActiveTamper: bitmask
+- TamperHistory
+- TamperThresholds
+
+Interface:
+- report_tamper(type, severity) -> void
+- escalate() -> void
+- get_tamper_status() -> flags
+"]
+
+Supervisor --> VoteMgr["VOTE MANAGER [Saunak]
+Responsibility:
+- Process and validate votes
+- Enforce exactly-once semantics
+- Prevent duplicate submissions
+
+Encapsulates:
+- LastVoteID: uint32
+- CandidateCount: uint32
+- VoteRules
+
+Interface:
+- process_vote(vote_data) -> bool
+- validate_vote(vote_data) -> ValidationResult
+- is_duplicate(vote_id) -> bool
+"]
+
+Supervisor --> Parser["UART PARSER [Jenil]
+Responsibility:
+- Parse incoming UART frames
+- Validate frame structure
+- Extract vote/command events
+
+Encapsulates:
+- FrameBuffer[256]
+- ParseState: enum
+- Statistics
+
+Interface:
+- process_frame(raw_byte) -> bool
+- get_parsed_event() -> Event
+- reset_parser() -> void
+"]
+
+VoteMgr --> Storage["STORAGE MANAGER [Saunak]
+Responsibility:
+- Maintain append-only vote log
+- Persist with integrity checks
+- Recover records on boot
+
+Encapsulates:
+- WritePointer: uint32
+- CRCState: uint32
+- StorageLayout
+
+Interface:
+- append_record(vote_record) -> bool
+- recover_records() -> uint32
+- get_write_pointer() -> uint32
+"]
+
+System --> Power["POWER MONITOR [Jenil]
+Responsibility:
+- Detect reset cause
+- Store reset history
+- Assist recovery
+
+Encapsulates:
+- ResetSource: enum
+- ResetHistory
+
+Interface:
+- check_reset_source() -> ResetCause
+- is_power_loss_recovery() -> bool
+"]
+
+System --> Logger["LOGGING MANAGER [Saunak]
+Responsibility:
+- Record audit events
+- Maintain immutable log
+- Support forensic analysis
+
+Encapsulates:
+- LogBuffer[512]
+- WritePointer: uint16
+- LogCount: uint32
+
+Interface:
+- log_event(type, data) -> void
+- flush_log() -> void
+"]
+```
+
+---
+
+## Step 10 – Architectural Risk Assessment
+
+### Identified Risk #1: Parser-to-Supervisor Coupling on Malformed Input
+
+**Description:**  
+If the Parser receives rapid bursts of malformed frames (potential attack vector), escalating every error to the Supervisor could create a denial-of-service vulnerability, consuming CPU and blocking legitimate vote processing.
+
+**Why It's a Risk:**
+- Parser forwards every invalid frame event to Supervisor
+- Supervisor logs and counts errors without rate limiting
+- A malicious actor sending junk frames could flood the system
+
+**Impact:**
+- System responsiveness degradation
+- Legitimate votes delayed or dropped
+- Audit log saturation
+
+**Mitigation (Future):**
+- Implement frame-level rate limiting: Parser drops frames exceeding threshold, logs aggregate error count instead
+- Add Parser-internal anomaly detection: If error rate exceeds baseline, escalate single "Parser Anomaly" event rather than individual frame errors
+- Supervisor may respond to Parser Anomaly by entering Error state or alerting operator
+- Regular baseline recalibration to adapt to legitimate noise
+
+---
+
+### Identified Risk #2: Storage Recovery Race Condition
+
+**Description:**  
+If power is lost during a vote write, the Storage Manager might begin recovery with an incomplete record in NVM. Vote Manager then queries for LastVoteID, but the incomplete record's CRC fails, causing recovery to stop. However, if the record was partially written, the vote data might exist in NVM but be invisible.
+
+**Why It's a Risk:**
+- Storage Manager stops recovery at first CRC failure
+- Incomplete record might represent a valid vote that was interrupted mid-write
+- Vote count mismatch could occur if voters try to revote
+
+**Impact:**
+- Potential loss of one vote per power failure during critical write window
+- Audit discrepancy: vote counted locally but lost to storage
+- Integrity question post-election
+
+**Mitigation (Future):**
+- Implement record-level write sequencing: Write header + CRC first, then vote data, then footer
+- On recovery, if footer missing, mark record as "candidate" and store separately
+- Operator can review candidate records and manually confirm or discard
+- Consider dual-write or journal buffer for critical votes
+
+---
+
+## Submission Summary
+
+**Completion Checklist:**
+- [x] Exploratory block sketch included (Step 1)
+- [x] Architectural rationale provided (Step 6)
+- [x] Hierarchical control diagram complete with finalized interfaces (Steps 2, 9)
+- [x] Dependency constraints defined and justified (Step 3)
+- [x] Behavioral mapping table complete (Step 4)
+- [x] Interaction summary table complete (Step 5)
+- [x] Task split defined for 3 members (Step 7)
+- [x] Individual module specifications complete (Step 8)
+  - [x] Supervisor + System (Gagan)
+  - [x] Parser + Power Monitor + Storage (Jenil)
+  - [x] Vote Manager + Tamper + Logger (Saunak)
+- [x] Architectural risks identified and mitigation proposed (Step 10)
+
+
+---
+
+**Document Status:** Ready for team review and individual member expansion.
