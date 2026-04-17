@@ -1,9 +1,7 @@
 #include "storage_manager.h"
-
 #include <Arduino.h>
 #include <stddef.h>
 #include <string.h>
-
 #include "logger.h"
 
 // ─────────────────────────────────────────────
