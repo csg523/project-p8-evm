@@ -100,7 +100,7 @@ uint32_t event_manager_dispatch_all(void) {
         // the queue capacity (64), giving legitimate burst events room to drain
         // while bounding the worst-case tick duration to ~256 handler calls.
         
-        if (n > (EVM_EVENT_QUEUE_SIZE * 4u)) {
+        if (n >= (EVM_EVENT_QUEUE_SIZE * 4u)) {
             logger_log(LOG_ERROR, millis(), 0xEE04);
             if (g_q.count > 0) {
                 g_drain_pending = true;
