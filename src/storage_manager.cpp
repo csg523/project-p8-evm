@@ -23,6 +23,7 @@
 // (3 sensors, each can trigger once before lockdown) plus a small margin.
 // 8 slots costs only 8 × sizeof(TamperRecord) = 8 × 10 = 80 bytes of RAM.
 #define MAX_STORED_TAMPERS 8
+#define MAX_STORED_LOGS EVM_LOG_MAX_ENTRIES
 
 static VoteRecord _nvm_votes[MAX_STORED_VOTES];
 static bool _nvm_valid[MAX_STORED_VOTES];
@@ -34,6 +35,9 @@ static bool _nvm_initialised = false;
 
 static TamperRecord _nvm_tampers[MAX_STORED_TAMPERS];
 static uint32_t _tamper_count = 0;
+
+static LogEntry _nvm_logs[MAX_STORED_LOGS];
+static uint32_t _log_count = 0;
 
 extern "C" uint16_t evm_crc16(const uint8_t* data, uint16_t length) {
   uint16_t crc = 0xFFFF;
@@ -51,11 +55,13 @@ void storage_reset(void) {
   memset(_nvm_votes, 0, sizeof(_nvm_votes));
   memset(_nvm_valid, 0, sizeof(_nvm_valid));
   memset(_nvm_tampers, 0, sizeof(_nvm_tampers));
+  memset(_nvm_logs, 0, sizeof(_nvm_logs));
   _nvm_initialised = false;
   _write_ptr = 0;
   _record_count = 0;
   _last_vote_id = 0;
   _tamper_count = 0;
+  _log_count = 0;
   _full = false;
 }
 
@@ -64,6 +70,7 @@ void storage_init(void) {
     memset(_nvm_votes, 0, sizeof(_nvm_votes));
     memset(_nvm_valid, 0, sizeof(_nvm_valid));
     memset(_nvm_tampers, 0, sizeof(_nvm_tampers));
+    memset(_nvm_logs, 0, sizeof(_nvm_logs));
     _nvm_initialised = true;
   }
 
@@ -71,6 +78,7 @@ void storage_init(void) {
   _record_count = 0;
   _last_vote_id = 0;
   _tamper_count = 0;
+  _log_count = 0;
   _full = false;
 
   // Scan all slots and validate CRC
@@ -115,6 +123,12 @@ EvmResult storage_append_vote(const VoteRecord* rec) {
   if (rec->vote_id > _last_vote_id) _last_vote_id = rec->vote_id;
   if (_write_ptr >= MAX_STORED_VOTES) _full = true;
   return EVM_OK;
+}
+
+void storage_manager_write_log(const LogEntry* entry) {
+  if (!entry) return;
+  if (_log_count >= MAX_STORED_LOGS) return;
+  _nvm_logs[_log_count++] = *entry;
 }
 
 EvmResult storage_append_tamper(const TamperRecord* rec) {
