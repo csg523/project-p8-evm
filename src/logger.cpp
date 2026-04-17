@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "storage_manager.h"
 #include <Arduino.h>
 
 static LogEntry _log[EVM_LOG_MAX_ENTRIES];
@@ -7,12 +8,19 @@ static uint32_t _count = 0;
 void logger_init(void) { _count = 0; }
 
 void logger_log(LogEventType type, uint32_t ts, uint32_t data) {
-    if (_count >= EVM_LOG_MAX_ENTRIES) return; // never drop silently in production — extend storage
+    if (_count >= EVM_LOG_MAX_ENTRIES) {
+        // Buffer full — flush to NVM to make room
+        logger_flush();
+    }
     _log[_count++] = { type, ts, data };
 }
 
 void logger_flush(void) {
-    for (uint32_t i = 0; i < _count; i++) logger_print_entry(i);
+    for (uint32_t i = 0; i < _count; i++) {
+        logger_print_entry(i);
+        storage_manager_write_log(&_log[i]);
+    }
+    _count = 0;
 }
 
 void logger_print_entry(uint32_t i) {
