@@ -63,7 +63,7 @@ typedef struct {
 } LogEntry;
 
 // ─── Vote Record ─────────────────────────────────────────────────────────────
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint32_t vote_id;
     uint8_t  candidate_id;
     uint32_t timestamp_ms;
@@ -72,7 +72,7 @@ typedef struct {
 
 // ─── Tamper Record ───────────────────────────────────────────────────────────
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     TamperType type;
     uint32_t   timestamp_ms;
     uint16_t   crc;
