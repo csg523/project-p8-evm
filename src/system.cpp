@@ -9,17 +9,10 @@
 #include "logger.h"
 #include <Arduino.h>
 
-
-#define UART_BAUD               9600
-
-
-#define SOFT_WDT_TIMEOUT_MS     EVM_SOFT_WDT_TIMEOUT_MS
-
-
-#define WDT_CHECK_PERIOD_MS     200
-
-
-#define TAMPER_POLL_PERIOD_MS   20
+#define UART_BAUD             9600
+#define SOFT_WDT_TIMEOUT_MS    EVM_SOFT_WDT_TIMEOUT_MS
+#define WDT_CHECK_PERIOD_MS    200
+#define TAMPER_POLL_PERIOD_MS  20
 
 static uint32_t _last_wdt_kick_ms    = 0;
 static uint32_t _last_wdt_check_ms   = 0;
@@ -42,13 +35,13 @@ static EvmResult handle_reset_cmd(const ParsedEvent* ev) {
 static EvmResult handle_watchdog_timer(const ParsedEvent* ev) {
     (void)ev;
     uint32_t now = millis();
+
     if (now - _last_wdt_kick_ms > SOFT_WDT_TIMEOUT_MS) {
         logger_log(LOG_ERROR, now, 0xD001);
         system_reset();
     }
     return EVM_OK;
 }
-
 
 static EvmResult handle_tamper_poll(const ParsedEvent* ev) {
     (void)ev;
@@ -85,7 +78,6 @@ void system_init(void) {
     // 6. UART parser resets frame assembler state.
     uart_parser_init();
 
-   
     event_manager_init();
     event_manager_register_handler(EVT_VOTE,              route_to_supervisor);
     event_manager_register_handler(EVT_TAMPER,            route_to_supervisor);
@@ -96,7 +88,6 @@ void system_init(void) {
     event_manager_register_handler(EVT_TIMER_TICK,        route_to_supervisor);
     event_manager_register_handler(EVT_TIMER_WATCHDOG,    handle_watchdog_timer);
     event_manager_register_handler(EVT_RESET,             handle_reset_cmd);
-    
     event_manager_register_handler(EVT_TIMER_TAMPER_POLL, handle_tamper_poll);
 
     // 8. Supervisor starts the state machine now that the queue is ready.
@@ -110,12 +101,8 @@ void system_init(void) {
 // ─── system_tick ──────────────────────────────────────────────────────────────
 
 void system_tick(void) {
-    
-    system_kick_watchdog();
-
     uint32_t now = millis();
 
-  
     if (now - _last_tamper_poll_ms >= TAMPER_POLL_PERIOD_MS) {
         _last_tamper_poll_ms = now;
         event_manager_enqueue_timer(EVT_TIMER_TAMPER_POLL, now, 0);
@@ -146,6 +133,8 @@ void system_tick(void) {
     }
 
     event_manager_dispatch_all();
+
+    system_kick_watchdog();
 }
 
 ResetCause system_get_reset_cause(void) {
