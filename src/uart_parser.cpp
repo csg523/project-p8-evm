@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <errno.h>
 
 // ─────────────────────────────────────────────
 //  UART Parser – byte-by-byte frame assembly
@@ -27,11 +29,27 @@ static bool _decode_frame(const char* body, EvmEvent* evt);
 // Returns -1 if key not found or value is malformed.
 // Example: _get_field("ID=42,CANDIDATE=2", "ID") → 42
 static int32_t _get_field(const char* body, const char* key) {
-    const char* p = strstr(body, key);  // Search for key substring
-    if (!p) return -1;                  // Key not found
-    p += strlen(key);                   // Move pointer past the key name
-    if (*p != '=') return -1;           // Expect '=' after key
-    return (int32_t)atol(p + 1);        // Parse integer value after '='
+    if (!body || !key) return -1;
+    size_t klen = strlen(key);
+
+    const char* p = body;
+    while ((p = strstr(p, key)) != NULL) {
+        bool token_start = (p == body) || (*(p - 1) == ',');
+        if (token_start && p[klen] == '=') {
+            const char* v = p + klen + 1;
+            errno = 0;
+            char* endptr = NULL;
+            long parsed = strtol(v, &endptr, 10);
+
+            if (endptr == v) return -1;
+            if (*endptr != '\0' && *endptr != ',') return -1;
+            if (errno == ERANGE || parsed < 0 || parsed > INT32_MAX) return -1;
+
+            return (int32_t)parsed;
+        }
+        p += 1;
+    }
+    return -1;
 }
 
 void uart_parser_init(void) {
@@ -125,10 +143,18 @@ static bool _decode_frame(const char* body, EvmEvent* evt) {
     if (strncmp(body, "TAMPER,", 7) == 0) {
         int32_t type = _get_field(body, "TYPE");       // Extract tamper type
         int32_t ts   = _get_field(body, "TS");         // Extract timestamp (optional)
-        if (type < 0) return false;                    // TYPE is mandatory
+        if (type <= 0) return false;
+
+        const uint32_t allowed =
+            (uint32_t)TAMPER_CASE_OPEN |
+            (uint32_t)TAMPER_VOLTAGE |
+            (uint32_t)TAMPER_CLOCK;
+
+        uint32_t flags = (uint32_t)type;
+        if ((flags & ~allowed) != 0) return false;
 
         evt->type = EVT_TAMPER;
-        evt->data.tamper.tamper_flags = (uint32_t)type;
+        evt->data.tamper.tamper_flags = flags;
         evt->timestamp_ms = (ts >= 0) ? (uint32_t)ts : millis();
         return true;
     }
