@@ -159,10 +159,7 @@ typedef struct {
 //   2000 ms is 10× the WDT_CHECK_PERIOD_MS (200 ms), giving up to 10 missed
 //   check events before a reset is triggered — enough tolerance for brief
 //   dispatch spikes without masking genuine firmware stalls.
-//
-// Previously this header defined WATCHDOG_TIMEOUT_MS = 8000 which was never
-// used; system.cpp had its own SOFT_WDT_TIMEOUT_MS = 2000.  The two constants
-// are now unified here under EVM_SOFT_WDT_TIMEOUT_MS.
+
 #define EVM_SOFT_WDT_TIMEOUT_MS   2000
 // Legacy alias — do not add new uses; kept for any out-of-tree references.
 #define WATCHDOG_TIMEOUT_MS       EVM_SOFT_WDT_TIMEOUT_MS
