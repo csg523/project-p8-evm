@@ -7,6 +7,9 @@
 #define HIGH 1
 #define LOW 0
 #define INPUT_PULLUP 2
+#define RISING  3
+#define FALLING 4
+#define CHANGE  5
 
 extern uint32_t g_ms;
 
@@ -40,3 +43,12 @@ extern FakeSerial Serial;
 extern FakeSerial Serial1;
 
 inline void NVIC_SystemReset() { exit(1); }
+
+inline void noInterrupts() {}
+inline void interrupts() {}
+
+typedef void (*InterruptHandler)(void);
+
+inline int digitalPinToInterrupt(uint8_t pin) { return (int)pin; }
+inline void attachInterrupt(int, InterruptHandler, int) {}
+inline void detachInterrupt(int) {}
