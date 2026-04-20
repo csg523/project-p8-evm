@@ -15,7 +15,6 @@ void vote_manager_init(void) {
     _vm.last_vote_id = storage_get_last_vote_id();
     memset(_tally, 0, sizeof(_tally));
 
-    // Recover tally and processed count from storage.
     uint32_t n = storage_get_record_count();
     for (uint32_t i = 0; i < n; i++) {
         VoteRecord r;
@@ -27,16 +26,21 @@ void vote_manager_init(void) {
 }
 
 void vote_manager_recover_from_storage(void) {
-  // Thin wrapper – init already performs recovery; kept for API completeness.
-  vote_manager_init();
+    vote_manager_init();
 }
 
 EvmResult vote_manager_process(uint32_t vote_id, uint8_t candidate_id, uint32_t timestamp_ms) {
+    if (vote_id == 0) {
+        logger_log(LOG_VOTE_REJECTED, timestamp_ms, vote_id);
+        return EVM_ERR_INVALID;
+    }
+
     if (vote_manager_is_duplicate(vote_id)) {
         _vm.duplicates_rejected++;
         logger_log(LOG_VOTE_REJECTED, timestamp_ms, vote_id);
         return EVM_ERR_DUPLICATE;
     }
+
     if (candidate_id >= _vm.candidate_count) {
         logger_log(LOG_VOTE_REJECTED, timestamp_ms, candidate_id);
         return EVM_ERR_INVALID;
@@ -63,8 +67,8 @@ EvmResult vote_manager_process(uint32_t vote_id, uint8_t candidate_id, uint32_t 
 }
 
 bool vote_manager_is_duplicate(uint32_t vote_id) {
-    
-    if (vote_id == 0) return false; // vote_id == 0 is the uninitialised sentinel
+    if (vote_id == 0) return true;
+
     uint32_t n = storage_get_record_count();
     for (uint32_t i = 0; i < n; i++) {
         VoteRecord r;
