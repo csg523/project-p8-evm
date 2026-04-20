@@ -74,21 +74,36 @@ void tamper_manager_poll(void) {
 void tamper_manager_report(TamperType type, uint32_t timestamp_ms) {
     if (_locked) return;
 
+    const uint32_t allowed =
+        (uint32_t)TAMPER_CASE_OPEN |
+        (uint32_t)TAMPER_VOLTAGE |
+        (uint32_t)TAMPER_CLOCK;
+
+    uint32_t flags = (uint32_t)type;
+    if (flags == 0 || (flags & ~allowed) != 0) {
+        logger_log(LOG_ERROR, timestamp_ms, 0xE002); // invalid tamper flags
+        return;
+    }
+
     disable_tamper_interrupts();
 
-    _tm.active_flags |= (uint32_t)type;
+    _tm.active_flags |= flags;
     _tm.tamper_count++;
     if (_tm.first_tamper_ms == 0) _tm.first_tamper_ms = timestamp_ms;
     _tm.last_tamper_ms = timestamp_ms;
 
     TamperRecord rec;
     memset(&rec, 0, sizeof(rec));
-    rec.type = type;
+    rec.type = (TamperType)flags;
     rec.timestamp_ms = timestamp_ms;
     rec.crc = evm_crc16((const uint8_t*)&rec, offsetof(TamperRecord, crc));
-    storage_append_tamper(&rec);
 
-    logger_log(LOG_TAMPER, timestamp_ms, (uint32_t)type);
+    EvmResult sr = storage_append_tamper(&rec);
+    if (sr != EVM_OK) {
+        logger_log(LOG_ERROR, timestamp_ms, (uint32_t)sr);
+    }
+
+    logger_log(LOG_TAMPER, timestamp_ms, flags); // single forensic tamper log
     _locked = true;
 }
 
