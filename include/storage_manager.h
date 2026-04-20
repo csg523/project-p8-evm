@@ -12,4 +12,6 @@ uint32_t storage_get_last_vote_id(void);
 EvmResult storage_read_record(uint32_t index, VoteRecord* out);
 EvmResult storage_append_tamper(const TamperRecord* rec);
 
-void storage_manager_write_log(const LogEntry* entry);
+bool storage_manager_write_log(const LogEntry* entry);
+uint32_t storage_get_log_count(void);
+uint32_t storage_get_log_capacity(void);
