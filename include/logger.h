@@ -14,3 +14,4 @@ void logger_print_entry(uint32_t index);
 
 uint32_t logger_get_count(void);
 bool logger_get_entry(uint32_t index, LogEntry* out);
+uint32_t logger_get_persist_dropped(void);
