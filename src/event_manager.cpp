@@ -24,6 +24,10 @@ static EventQueue g_q;
 static EventHandler g_handlers[EVT_MAX];
 static bool g_drain_pending = false;
 
+static bool is_valid_event_type(EventType t) {
+    return ((uint32_t)t < (uint32_t)EVT_MAX);
+}
+
 static uint32_t inc_idx(uint32_t i) {
     return (i + 1u) % EVM_EVENT_QUEUE_SIZE;
 }
@@ -38,10 +42,18 @@ bool event_manager_enqueue(const ParsedEvent* event) {
     if (!event) return false;
 
     EVM_CRIT_ENTER();
+
+    if (!is_valid_event_type(event->type)) {
+        g_q.dropped++;
+        EVM_CRIT_EXIT();
+        logger_log(LOG_ERROR, millis(), 0xEE01); // invalid event type
+        return false;
+    }
+
     if (g_q.count >= EVM_EVENT_QUEUE_SIZE) {
         g_q.dropped++;
         EVM_CRIT_EXIT();
-        logger_log(LOG_ERROR, millis(), 0xEE02);
+        logger_log(LOG_ERROR, millis(), 0xEE02); // queue full
         return false;
     }
 
@@ -54,6 +66,14 @@ bool event_manager_enqueue(const ParsedEvent* event) {
 }
 
 bool event_manager_enqueue_timer(EventType type, uint32_t timestamp_ms, uint32_t data) {
+    if (!is_valid_event_type(type)) {
+        EVM_CRIT_ENTER();
+        g_q.dropped++;
+        EVM_CRIT_EXIT();
+        logger_log(LOG_ERROR, millis(), 0xEE06); // invalid timer event type
+        return false;
+    }
+
     ParsedEvent e = EVT_EMPTY;
     e.type = type;
     e.timestamp_ms = timestamp_ms;
@@ -74,6 +94,10 @@ bool event_manager_dispatch_one(void) {
     g_q.count--;
     EVM_CRIT_EXIT();
 
+    if (!is_valid_event_type(e.type)) {
+        logger_log(LOG_ERROR, millis(), 0xEE05); // corrupted/invalid queued type
+        return true;
+    }
 
     EventHandler handler = g_handlers[e.type];
     if (handler == 0) {
