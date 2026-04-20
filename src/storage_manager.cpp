@@ -125,10 +125,19 @@ EvmResult storage_append_vote(const VoteRecord* rec) {
   return EVM_OK;
 }
 
-void storage_manager_write_log(const LogEntry* entry) {
-  if (!entry) return;
-  if (_log_count >= MAX_STORED_LOGS) return;
+bool storage_manager_write_log(const LogEntry* entry) {
+  if (!entry) return false;
+  if (_log_count >= MAX_STORED_LOGS) return false;
   _nvm_logs[_log_count++] = *entry;
+  return true;
+}
+
+uint32_t storage_get_log_count(void) {
+  return _log_count;
+}
+
+uint32_t storage_get_log_capacity(void) {
+  return MAX_STORED_LOGS;
 }
 
 EvmResult storage_append_tamper(const TamperRecord* rec) {
@@ -145,7 +154,6 @@ EvmResult storage_append_tamper(const TamperRecord* rec) {
   if (check != rec->crc) return EVM_ERR_CRC;
 
   _nvm_tampers[_tamper_count++] = *rec;
-  logger_log(LOG_TAMPER, rec->timestamp_ms, rec->type);
   return EVM_OK;
 }
 
