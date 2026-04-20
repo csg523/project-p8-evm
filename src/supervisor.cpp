@@ -91,8 +91,8 @@ EvmResult supervisor_handle_event(const ParsedEvent* evt) {
 }
 
 void supervisor_force_tamper_lockdown(TamperType type) {
+    (void)type; // logging owned by tamper_manager forensics path
     if (_sv.current_state == STATE_TAMPER_DETECTED) return;
-    logger_log(LOG_TAMPER, millis(), (uint32_t)type);
     _do_transition(STATE_TAMPER_DETECTED);
 }
 
