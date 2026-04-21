@@ -15,7 +15,9 @@ static const bool TT[STATE_COUNT][STATE_COUNT] = {
 };
 
 static SupervisorState _sv;
-
+//ElectionState is enum of states like initialization,pre-election,voting active etc
+//logeer_log first parameter is enum of log type like state change,error occured etc
+//does the transition and log with logger
 static void _do_transition(ElectionState to) {
     _sv.transition_in_progress = true;
     _sv.previous_state = _sv.current_state;
@@ -23,10 +25,12 @@ static void _do_transition(ElectionState to) {
     _sv.transition_count++;
     _sv.last_transition_ms = millis();
     logger_log(LOG_STATE_CHANGE, _sv.last_transition_ms,
-               ((uint32_t)_sv.previous_state << 8) | (uint32_t)to);
+               ((uint32_t)_sv.previous_state << 8) | (uint32_t)to);//decrypt by deviding the value by 256 get prev and and with 0xFF get current state
     _sv.transition_in_progress = false;
 }
-
+//_reset_cause = power_monitor_get_reset_cause();
+//supervisor_init(_reset_cause);
+//reset cause came from power monitor
 void supervisor_init(ResetCause cause) {
     _sv.current_state = STATE_INITIALIZATION;
     _sv.previous_state = STATE_INITIALIZATION;
@@ -36,7 +40,7 @@ void supervisor_init(ResetCause cause) {
 
     logger_log(LOG_RESET, millis(), (uint32_t)cause);
 
-    if (cause == RESET_WATCHDOG) _do_transition(STATE_ERROR);
+    if (cause == RESET_WATCHDOG) _do_transition(STATE_ERROR);//system can be unstable or need investigation if watchdog timeout thus we go to error state, in error state only transition allowed is to tamper detected state
     else _do_transition(STATE_PRE_ELECTION);
 }
 
@@ -54,7 +58,7 @@ EvmResult supervisor_handle_event(const ParsedEvent* evt) {
             return vote_manager_process(evt->data.vote.vote_id,
                                         evt->data.vote.candidate_id,
                                         evt->timestamp_ms);
-
+//getting the type of tamper from evt by falgs and thus tampertype typcecastingto a tamper type.
         case EVT_TAMPER:
             tamper_manager_report((TamperType)evt->data.tamper.tamper_flags, evt->timestamp_ms);
             supervisor_force_tamper_lockdown((TamperType)evt->data.tamper.tamper_flags);
@@ -110,7 +114,7 @@ bool supervisor_is_valid_transition(ElectionState from, ElectionState to) {
 }
 
 uint32_t supervisor_get_transition_count(void) { return _sv.transition_count; }
-
+//converts a state to string for logging and debugging purposes
 const char* supervisor_state_name(ElectionState s) {
     switch (s) {
         case STATE_INITIALIZATION:  return "INITIALIZATION";
