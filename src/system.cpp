@@ -1,3 +1,4 @@
+//system act as a centre to connect all these modules
 #include "system.h"
 #include "event_manager.h"
 #include "supervisor.h"
@@ -9,29 +10,32 @@
 #include "logger.h"
 #include <Arduino.h>
 
-#define UART_BAUD             9600
-#define SOFT_WDT_TIMEOUT_MS    EVM_SOFT_WDT_TIMEOUT_MS
-#define WDT_CHECK_PERIOD_MS    200
-#define TAMPER_POLL_PERIOD_MS  20
+#define UART_BAUD             9600             //speed of communication (bits/second)
+#define SOFT_WDT_TIMEOUT_MS    EVM_SOFT_WDT_TIMEOUT_MS //for 2000ms if response dosent come then reset the system
+#define WDT_CHECK_PERIOD_MS    200 //Interval (in ms) at which watchdog health is checked
+#define TAMPER_POLL_PERIOD_MS  20 //Interval (in ms) at which tamper status is polled
 
-static uint32_t _last_wdt_kick_ms    = 0;
-static uint32_t _last_wdt_check_ms   = 0;
-static uint32_t _last_tamper_poll_ms = 0;
-static ResetCause _reset_cause = RESET_UNKNOWN;
+static uint32_t _last_wdt_kick_ms    = 0;//last time system said im alive to watchdog timer, if this value is too old then system will reset
+static uint32_t _last_wdt_check_ms   = 0;//when did we last checked watchdog
+static uint32_t _last_tamper_poll_ms = 0;//when did we last checked tamper status
+static ResetCause _reset_cause = RESET_UNKNOWN;//(enum)Reset Cause tells the reason for system reset(ex-power failure,software reset etc)
 
 // ─── Event handlers ───────────────────────────────────────────────────────────
 
+//simply forwards event to supervisor, which will decide what to do with it based on current state and event type
 static EvmResult route_to_supervisor(const ParsedEvent* ev) {
     return supervisor_handle_event(ev);
 }
-
+//log that reset command was recieved and then reset the system
+//parsedEvent(struct) have type(vote,tamper),timestamp and data
+//EvmResult(enum) tells the outcome of fxn(evm_ok,evm_err_wrong_state etc)
 static EvmResult handle_reset_cmd(const ParsedEvent* ev) {
     (void)ev;
     logger_log(LOG_ADMIN_CMD, millis(), EVT_RESET);
     system_reset();
     return EVM_OK;
 }
-
+//0xD001 is code for watchdog timeout error
 static EvmResult handle_watchdog_timer(const ParsedEvent* ev) {
     (void)ev;
     uint32_t now = millis();
@@ -42,7 +46,8 @@ static EvmResult handle_watchdog_timer(const ParsedEvent* ev) {
     }
     return EVM_OK;
 }
-
+//poll tamper status and log if any tamper event is detected
+//EVT_Timer_Tamper_POLL got enqued-event manager deques it and call handle tamper poll
 static EvmResult handle_tamper_poll(const ParsedEvent* ev) {
     (void)ev;
     tamper_manager_poll();
@@ -55,21 +60,20 @@ void system_init(void) {
     Serial.begin(UART_BAUD);
     Serial1.begin(UART_BAUD);
 
-    while (!Serial && millis() < 3000) {} // wait for USB serial (debug only)
+    while (!Serial && millis() < 3000) {} // wait for USB serial for 3sec (debug only)
 
     // 1. Logger must be ready before any module emits log entries.
     logger_init();
 
-    // 2. Power monitor reads the SAMD21 RCAUSE register; must run before any
-    //    clock or peripheral setup can overwrite the register content.
+    // 2. it reads reset cause early as it can get overwritten 
     power_monitor_init();
     _reset_cause = power_monitor_get_reset_cause();
 
-    // 3. Storage scan rebuilds the _nvm_valid[] index and _record_count.
+    // 3. Initialize storage and rebuild data from memory
     //    Must complete before vote_manager queries those values.
     storage_init();
 
-    // 4. Vote manager recovers last_vote_id and per-candidate tally from NVM.
+    // 4. Initialize vote manager using data from storage like vote count and last vote id
     vote_manager_init();
 
     // 5. Tamper manager configures GPIO pins.
@@ -78,7 +82,8 @@ void system_init(void) {
     // 6. UART parser resets frame assembler state.
     uart_parser_init();
 
-    event_manager_init();
+    event_manager_init();//create event queue and laterevent manager will dispatch events to thier respective modules 
+    // 7. whenever this event comes call this function(event manager calls the function registered for that event)
     event_manager_register_handler(EVT_VOTE,              route_to_supervisor);
     event_manager_register_handler(EVT_TAMPER,            route_to_supervisor);
     event_manager_register_handler(EVT_START,             route_to_supervisor);
@@ -118,7 +123,7 @@ void system_tick(void) {
     while (Serial1.available()) {
         ParsedEvent evt = EVT_EMPTY;
         uint8_t b = (uint8_t)Serial1.read();
-        if (uart_parser_feed(b, &evt)) {
+        if (uart_parser_feed(b, &evt)) {//uart parser maintains a buffer at the end when full frame recived fill the evt
             event_manager_enqueue(&evt);
         }
     }
