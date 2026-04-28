@@ -5,28 +5,51 @@
 static LogEntry _log[EVM_LOG_MAX_ENTRIES];
 static uint32_t _count = 0;
 static uint32_t _persist_dropped = 0;
+static bool _flushing = false;
 
 void logger_init(void) {
   _count = 0;
   _persist_dropped = 0;
+  _flushing = false;
 }
 
 void logger_log(LogEventType type, uint32_t ts, uint32_t data) {
   if (_count >= EVM_LOG_MAX_ENTRIES) {
-    // Buffer full — flush to NVM to make room
+    if (_flushing) {
+      // Re-entrant log while flushing: drop to avoid recursion.
+      _persist_dropped++;
+      return;
+    }
     logger_flush();
+
+    // if still full for any reason, drop this entry.
+    if (_count >= EVM_LOG_MAX_ENTRIES) {
+      _persist_dropped++;
+      return;
+    }
   }
-  _log[_count++] = {type, ts, data};
+
+  _log[_count].type = type;
+  _log[_count].timestamp_ms = ts;
+  _log[_count].data = data;
+  _count++;
 }
 
 void logger_flush(void) {
-  for (uint32_t i = 0; i < _count; i++) {
+  if (_flushing) return;
+  _flushing = true;
+
+  // Snapshot count so logs produced during flush are not iterated now.
+  uint32_t n = _count;
+  for (uint32_t i = 0; i < n; i++) {
     logger_print_entry(i);
     if (!storage_manager_write_log(&_log[i])) {
       _persist_dropped++;
     }
   }
+
   _count = 0;
+  _flushing = false;
 }
 
 void logger_print_entry(uint32_t i) {
@@ -41,6 +64,7 @@ void logger_print_entry(uint32_t i) {
 }
 
 uint32_t logger_get_count(void) { return _count; }
+
 bool logger_get_entry(uint32_t i, LogEntry* out) {
   if (i >= _count || !out) return false;
   *out = _log[i];
