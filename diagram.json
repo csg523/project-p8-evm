@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "author": "EVM",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-nano", "id": "nano", "top": 100, "left": 150, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_case",
+      "top": 15.8,
+      "left": 19.2,
+      "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_voltage",
+      "top": 20,
+      "left": 120,
+      "attrs": { "color": "yellow" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_clock",
+      "top": 20,
+      "left": 220,
+      "attrs": { "color": "blue" }
+    }
+  ],
+  "connections": [
+    [ "nano:2", "btn_case:2.l", "red", [] ],
+    [ "nano:GND.1", "btn_case:1.l", "black", [] ],
+    [ "nano:3", "btn_voltage:2.l", "orange", [] ],
+    [ "nano:GND.2", "btn_voltage:1.l", "black", [] ],
+    [ "nano:4", "btn_clock:2.l", "blue", [] ],
+    [ "nano:GND.2", "btn_clock:1.l", "black", [] ]
+  ],
+  "dependencies": {}
+}
