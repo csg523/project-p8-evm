@@ -58,9 +58,12 @@ static EvmResult handle_tamper_poll(const ParsedEvent* ev) {
 
 void system_init(void) {
     Serial.begin(UART_BAUD);
-    Serial1.begin(UART_BAUD);
 
-    while (!Serial && millis() < 3000) {} // wait for USB serial for 3sec (debug only)
+#if defined(ARDUINO_ARCH_SAMD)
+    Serial1.begin(UART_BAUD);
+#endif
+
+    while (!Serial && millis() < 3000) {}
 
     // 1. Logger must be ready before any module emits log entries.
     logger_init();
@@ -119,18 +122,28 @@ void system_tick(void) {
         event_manager_enqueue_timer(EVT_TIMER_WATCHDOG, now, 0);
     }
 
-    // Feed all available UART bytes into the frame assembler.
-    while (Serial1.available()) {
+#ifdef WOKWI_SIM
+    while (Serial.available()) {
         ParsedEvent evt = EVT_EMPTY;
-        uint8_t b = (uint8_t)Serial1.read();
-        if (uart_parser_feed(b, &evt)) {//uart parser maintains a buffer at the end when full frame recived fill the evt
+        uint8_t b = (uint8_t)Serial.read();
+        if (uart_parser_feed(b, &evt)) {
             event_manager_enqueue(&evt);
         }
     }
+#else
+    while (Serial1.available()) {
+        ParsedEvent evt = EVT_EMPTY;
+        uint8_t b = (uint8_t)Serial1.read();
+        if (uart_parser_feed(b, &evt)) {
+            event_manager_enqueue(&evt);
+        }
+    }
+#endif
 
     // Debug quick report trigger — development convenience only.
     // Guard with #ifdef DEBUG or remove before production build.
-    if (Serial.available() && Serial.read() == 'R') {
+    if (Serial.available() && Serial.peek() == 'R') {
+        Serial.read();
         ParsedEvent e = EVT_EMPTY;
         e.type = EVT_REPORT;
         e.timestamp_ms = millis();
@@ -151,6 +164,9 @@ void system_kick_watchdog(void) {
 }
 
 void system_reset(void) {
-    // NVIC software reset (ARM Cortex-M0+ on Nano 33 IoT / SAMD21)
+#if defined(ARDUINO_ARCH_SAMD)
     NVIC_SystemReset();
+#else
+    while (true) {}
+#endif
 }
