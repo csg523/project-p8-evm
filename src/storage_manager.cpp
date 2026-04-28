@@ -3,25 +3,19 @@
 #include <stddef.h>
 #include <string.h>
 #include "logger.h"
+#include <FlashStorage_SAMD.h>
 
 // ─────────────────────────────────────────────
 //  Storage Manager – append-only NVM
 //
-//  RAM simulation is used by default (works on
-//  PC tests and on Arduino without extra libs).
-//
-//  To use real Flash on Nano 33 IoT:
-//  1. Install FlashStorage_SAMD library
-//  2. Add: #include <FlashStorage_SAMD.h>
-//     and replace the _nvm_votes / _nvm_tampers
-//     arrays with FlashStorage instances.
+//  Votes/tampers: RAM simulation for now.
+//  Logs: persisted to flash via FlashStorage_SAMD.
 // ─────────────────────────────────────────────
 
 #define MAX_STORED_VOTES EVM_MAX_VOTES
 
 // Tamper record storage: sized to match the number of distinct tamper types
 // (3 sensors, each can trigger once before lockdown) plus a small margin.
-// 8 slots costs only 8 × sizeof(TamperRecord) = 8 × 10 = 80 bytes of RAM.
 #define MAX_STORED_TAMPERS 8
 #define MAX_STORED_LOGS EVM_LOG_MAX_ENTRIES
 
@@ -36,8 +30,31 @@ static bool _nvm_initialised = false;
 static TamperRecord _nvm_tampers[MAX_STORED_TAMPERS];
 static uint32_t _tamper_count = 0;
 
-static LogEntry _nvm_logs[MAX_STORED_LOGS];
 static uint32_t _log_count = 0;
+
+#define LOG_FLASH_MAGIC 0x45564D31u  // "EVM1"
+
+typedef struct {
+  uint32_t magic;
+  uint32_t count;
+  LogEntry logs[MAX_STORED_LOGS];
+} FlashLogStore;
+
+FlashStorage(evm_logs_store, FlashLogStore);
+
+static FlashLogStore _flash_logs_cache;
+
+static void flash_logs_init() {
+  evm_logs_store.read(_flash_logs_cache);
+  if (_flash_logs_cache.magic != LOG_FLASH_MAGIC ||
+      _flash_logs_cache.count > MAX_STORED_LOGS) {
+    memset(&_flash_logs_cache, 0, sizeof(_flash_logs_cache));
+    _flash_logs_cache.magic = LOG_FLASH_MAGIC;
+    _flash_logs_cache.count = 0;
+    evm_logs_store.write(_flash_logs_cache);
+  }
+  _log_count = _flash_logs_cache.count;
+}
 
 extern "C" uint16_t evm_crc16(const uint8_t* data, uint16_t length) {
   uint16_t crc = 0xFFFF;
@@ -55,7 +72,7 @@ void storage_reset(void) {
   memset(_nvm_votes, 0, sizeof(_nvm_votes));
   memset(_nvm_valid, 0, sizeof(_nvm_valid));
   memset(_nvm_tampers, 0, sizeof(_nvm_tampers));
-  memset(_nvm_logs, 0, sizeof(_nvm_logs));
+
   _nvm_initialised = false;
   _write_ptr = 0;
   _record_count = 0;
@@ -63,6 +80,11 @@ void storage_reset(void) {
   _tamper_count = 0;
   _log_count = 0;
   _full = false;
+
+  memset(&_flash_logs_cache, 0, sizeof(_flash_logs_cache));
+  _flash_logs_cache.magic = LOG_FLASH_MAGIC;
+  _flash_logs_cache.count = 0;
+  evm_logs_store.write(_flash_logs_cache);
 }
 
 void storage_init(void) {
@@ -70,7 +92,6 @@ void storage_init(void) {
     memset(_nvm_votes, 0, sizeof(_nvm_votes));
     memset(_nvm_valid, 0, sizeof(_nvm_valid));
     memset(_nvm_tampers, 0, sizeof(_nvm_tampers));
-    memset(_nvm_logs, 0, sizeof(_nvm_logs));
     _nvm_initialised = true;
   }
 
@@ -80,6 +101,8 @@ void storage_init(void) {
   _tamper_count = 0;
   _log_count = 0;
   _full = false;
+
+  flash_logs_init();
 
   // Scan all slots and validate CRC
   for (uint32_t i = 0; i < MAX_STORED_VOTES; i++) {
@@ -127,8 +150,10 @@ EvmResult storage_append_vote(const VoteRecord* rec) {
 
 bool storage_manager_write_log(const LogEntry* entry) {
   if (!entry) return false;
-  if (_log_count >= MAX_STORED_LOGS) return false;
-  _nvm_logs[_log_count++] = *entry;
+  if (_flash_logs_cache.count >= MAX_STORED_LOGS) return false;
+  _flash_logs_cache.logs[_flash_logs_cache.count++] = *entry;
+  _log_count = _flash_logs_cache.count;
+  evm_logs_store.write(_flash_logs_cache);
   return true;
 }
 
