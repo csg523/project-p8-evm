@@ -1,5 +1,6 @@
-#include "logger.h"
 #include <Arduino.h>
+
+#include "logger.h"
 #include "storage_manager.h"
 
 static LogEntry _log[EVM_LOG_MAX_ENTRIES];
@@ -16,13 +17,11 @@ void logger_init(void) {
 void logger_log(LogEventType type, uint32_t ts, uint32_t data) {
   if (_count >= EVM_LOG_MAX_ENTRIES) {
     if (_flushing) {
-      // Re-entrant log while flushing: drop to avoid recursion.
       _persist_dropped++;
       return;
     }
     logger_flush();
 
-    // if still full for any reason, drop this entry.
     if (_count >= EVM_LOG_MAX_ENTRIES) {
       _persist_dropped++;
       return;
@@ -39,7 +38,6 @@ void logger_flush(void) {
   if (_flushing) return;
   _flushing = true;
 
-  // Snapshot count so logs produced during flush are not iterated now.
   uint32_t n = _count;
   for (uint32_t i = 0; i < n; i++) {
     logger_print_entry(i);

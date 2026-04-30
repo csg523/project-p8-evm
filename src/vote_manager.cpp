@@ -1,9 +1,8 @@
-#include "vote_manager.h"
-
 #include <Arduino.h>
 #include <stddef.h>
 #include <string.h>
 
+#include "vote_manager.h"
 #include "logger.h"
 #include "storage_manager.h"
 
@@ -97,5 +96,17 @@ uint32_t vote_manager_get_count(uint8_t candidate_id) {
 }
 
 uint32_t vote_manager_get_total(void) { return _vm.votes_processed; }
+
 uint32_t vote_manager_get_last_vote_id(void) { return _vm.last_vote_id; }
+
 const VoteManagerState* vote_manager_get_state(void) { return &_vm; }
+
+void vote_manager_dump_tally_serial(void) {
+  Serial.println(F("=== VOTE TALLY BY CANDIDATE ==="));
+  for (uint8_t i = 0; i < EVM_CANDIDATE_COUNT; i++) {
+    Serial.print(F("CANDIDATE "));
+    Serial.print(i);
+    Serial.print(F(": "));
+    Serial.println(_tally[i]);
+  }
+}

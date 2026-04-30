@@ -91,6 +91,7 @@ void system_init(void) {
     event_manager_register_handler(EVT_TAMPER,            route_to_supervisor);
     event_manager_register_handler(EVT_START,             route_to_supervisor);
     event_manager_register_handler(EVT_END,               route_to_supervisor);
+    event_manager_register_handler(EVT_STATUS,               route_to_supervisor);
     event_manager_register_handler(EVT_REPORT,            route_to_supervisor);
     event_manager_register_handler(EVT_FRAME_ERROR,       route_to_supervisor);
     event_manager_register_handler(EVT_TIMER_TICK,        route_to_supervisor);
