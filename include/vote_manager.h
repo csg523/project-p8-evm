@@ -14,3 +14,4 @@ uint32_t vote_manager_get_total(void);
 uint32_t vote_manager_get_last_vote_id(void);
 
 const VoteManagerState* vote_manager_get_state(void);
+void vote_manager_dump_tally_serial(void);
